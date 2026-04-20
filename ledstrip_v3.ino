@@ -3,7 +3,7 @@
 // --- CONFIG ---
 #define NUM_STRIPS 6
 #define BRIGHTNESS 255
-#define RUNNING_BRIGHTNESS 100
+#define RUNNING_BRIGHTNESS 50 // <-- Changed from 100
 #define TURN_BRIGHTNESS 255
 
 // Right: pins 2,4,6 = 9,8,6 LEDs. Left: pins 3,5,7 = 9,8,6 LEDs
@@ -13,8 +13,8 @@ const uint8_t STRIP_LENGTHS[NUM_STRIPS] = {9, 8, 6, 9, 8, 6};
 const uint8_t MAX_LEDS = 9;
 
 const uint8_t BRAKE_PIN = 8;
-const uint8_t LEFT_PIN = 10; // <-- Flipped: was 9
-const uint8_t RIGHT_PIN = 9; // <-- Flipped: was 10
+const uint8_t LEFT_PIN = 10; // Flipped
+const uint8_t RIGHT_PIN = 9; // Flipped
 
 const uint16_t DEFAULT_PERIOD_MS = 800;
 const uint8_t SWEEP_PERCENT = 70;
@@ -103,16 +103,14 @@ void animateTurn(TurnState &state, bool brakeActive, uint8_t startStrip, uint8_t
 
   if (state.sweepDone) return;
 
-  // Draw comet: head + fading tail, NOW SWEEPS INNER->OUTER
+  // Draw comet: head + fading tail, sweeps INNER->OUTER
   for (uint8_t s = startStrip; s <= endStrip; s++) {
     uint8_t len = STRIP_LENGTHS[s];
-    // Scale head position to this strip's length
     uint8_t scaledHead = (state.headPos * len) / MAX_LEDS;
-    // Flip direction: start from inner end and move toward outer
     int8_t headIndex = (len - 1) - scaledHead;
 
     for (int8_t i = 0; i < TAIL_LENGTH; i++) {
-      int8_t pos = headIndex + i; // Tail trails toward inner
+      int8_t pos = headIndex + i;
       if (pos >= 0 && pos < len) {
         uint8_t brightness = TURN_BRIGHTNESS * (TAIL_LENGTH - i) / TAIL_LENGTH;
         strips[s][pos] = CRGB(brightness, 0, 0);
@@ -138,9 +136,8 @@ void updateRunningLights() {
   for (uint8_t s = 0; s < NUM_STRIPS; s++) {
     uint8_t len = STRIP_LENGTHS[s];
     uint8_t runCount = getRunningCount(len);
-    // Light the first `runCount` LEDs - outer end
     for (uint8_t i = 0; i < runCount; i++) {
-      strips[s][i] = dimRed;
+      strips[s][i] = dimRed; // Outer end
     }
   }
 }
@@ -149,8 +146,8 @@ void loop() {
   uint32_t now = millis();
 
   bool brake = digitalRead(BRAKE_PIN);
-  bool leftRaw = digitalRead(LEFT_PIN); // Now pin 10
-  bool rightRaw = digitalRead(RIGHT_PIN); // Now pin 9
+  bool leftRaw = digitalRead(LEFT_PIN);
+  bool rightRaw = digitalRead(RIGHT_PIN);
 
   updateTurnTiming(leftTurn, leftRaw, now);
   updateTurnTiming(rightTurn, rightRaw, now);
