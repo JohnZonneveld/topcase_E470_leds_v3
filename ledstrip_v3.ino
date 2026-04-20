@@ -6,15 +6,15 @@
 #define RUNNING_BRIGHTNESS 100
 #define TURN_BRIGHTNESS 255
 
-// Strips 0,1,2 = left side. 3,4,5 = right side
-// Left: pins 2,3,4 = 9,8,6 LEDs. Right: pins 5,6,7 = 9,8,6 LEDs
-const uint8_t STRIP_PINS[NUM_STRIPS] = {2, 3, 4, 5, 6, 7}; // <-- Updated
-const uint8_t STRIP_LENGTHS[NUM_STRIPS] = {9, 8, 6, 9, 8, 6};
+// Strips 0,1,2 = RIGHT side. 3,4,5 = LEFT side
+// Right: pins 2,4,6 = 9,8,6 LEDs. Left: pins 3,5,7 = 9,8,6 LEDs
+const uint8_t STRIP_PINS[NUM_STRIPS] = {2, 4, 6, 3, 5, 7}; // <-- Updated
+const uint8_t STRIP_LENGTHS[NUM_STRIPS] = {9, 8, 6, 9, 8, 6}; // <-- Updated
 const uint8_t MAX_LEDS = 9;
 
-const uint8_t BRAKE_PIN = 8; // <-- Updated
-const uint8_t LEFT_PIN = 9; // <-- Updated
-const uint8_t RIGHT_PIN = 10; // <-- Updated
+const uint8_t BRAKE_PIN = 8;
+const uint8_t LEFT_PIN = 9;
+const uint8_t RIGHT_PIN = 10;
 
 const uint16_t DEFAULT_PERIOD_MS = 800;
 const uint16_t RUNNING_UPDATE_MS = 50;
@@ -40,12 +40,12 @@ TurnState leftTurn, rightTurn;
 uint32_t lastRunningUpdate = 0;
 
 void setup() {
-  FastLED.addLeds<WS2812B, 2, GRB>(strips[0], STRIP_LENGTHS[0]); // <-- Updated
-  FastLED.addLeds<WS2812B, 3, GRB>(strips[1], STRIP_LENGTHS[1]); // <-- Updated
-  FastLED.addLeds<WS2812B, 4, GRB>(strips[2], STRIP_LENGTHS[2]); // <-- Updated
-  FastLED.addLeds<WS2812B, 5, GRB>(strips[3], STRIP_LENGTHS[3]); // <-- Updated
-  FastLED.addLeds<WS2812B, 6, GRB>(strips[4], STRIP_LENGTHS[4]); // <-- Updated
-  FastLED.addLeds<WS2812B, 7, GRB>(strips[5], STRIP_LENGTHS[5]); // <-- Updated
+  FastLED.addLeds<WS2812B, 2, GRB>(strips[0], STRIP_LENGTHS[0]); // Right outer
+  FastLED.addLeds<WS2812B, 4, GRB>(strips[1], STRIP_LENGTHS[1]); // Right mid
+  FastLED.addLeds<WS2812B, 6, GRB>(strips[2], STRIP_LENGTHS[2]); // Right inner
+  FastLED.addLeds<WS2812B, 3, GRB>(strips[3], STRIP_LENGTHS[3]); // Left outer
+  FastLED.addLeds<WS2812B, 5, GRB>(strips[4], STRIP_LENGTHS[4]); // Left mid
+  FastLED.addLeds<WS2812B, 7, GRB>(strips[5], STRIP_LENGTHS[5]); // Left inner
   FastLED.setBrightness(BRIGHTNESS);
 
   pinMode(BRAKE_PIN, INPUT);
@@ -146,17 +146,18 @@ void loop() {
 
   bool anyTurnActive = leftTurn.isActive || rightTurn.isActive;
 
+  // NOTE: Right is now strips 0-2, Left is strips 3-5
   if (brake && leftTurn.isActive &&!rightTurn.isActive) {
-    animateTurn(leftTurn, brake, 0, 2, now);
-    animateTurn(rightTurn, brake, 3, 5, now);
+    animateTurn(leftTurn, brake, 3, 5, now); // Left sweeps
+    animateTurn(rightTurn, brake, 0, 2, now); // Right solid
   }
   else if (brake && rightTurn.isActive &&!leftTurn.isActive) {
-    animateTurn(rightTurn, brake, 3, 5, now);
-    animateTurn(leftTurn, brake, 0, 2, now);
+    animateTurn(rightTurn, brake, 0, 2, now); // Right sweeps
+    animateTurn(leftTurn, brake, 3, 5, now); // Left solid
   }
   else if (brake && leftTurn.isActive && rightTurn.isActive) {
-    animateTurn(leftTurn, brake, 0, 2, now);
-    animateTurn(rightTurn, brake, 3, 5, now);
+    animateTurn(leftTurn, brake, 3, 5, now);
+    animateTurn(rightTurn, brake, 0, 2, now);
   }
   else if (brake &&!anyTurnActive) {
     CRGB brightRed = CRGB(TURN_BRIGHTNESS, 0, 0);
@@ -165,14 +166,14 @@ void loop() {
     }
   }
   else if (leftTurn.isActive &&!rightTurn.isActive) {
-    animateTurn(leftTurn, brake, 0, 2, now);
+    animateTurn(leftTurn, brake, 3, 5, now);
   }
   else if (rightTurn.isActive &&!leftTurn.isActive) {
-    animateTurn(rightTurn, brake, 3, 5, now);
+    animateTurn(rightTurn, brake, 0, 2, now);
   }
   else if (leftTurn.isActive && rightTurn.isActive) {
-    animateTurn(leftTurn, brake, 0, 2, now);
-    animateTurn(rightTurn, brake, 3, 5, now);
+    animateTurn(leftTurn, brake, 3, 5, now);
+    animateTurn(rightTurn, brake, 0, 2, now);
   }
   else {
     if (now - lastRunningUpdate > RUNNING_UPDATE_MS) {
