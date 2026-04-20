@@ -3,7 +3,7 @@
 // --- CONFIG ---
 #define NUM_STRIPS 6
 #define BRIGHTNESS 255
-#define RUNNING_BRIGHTNESS 50 // <-- Changed from 100
+#define RUNNING_BRIGHTNESS 50
 #define TURN_BRIGHTNESS 255
 
 // Right: pins 2,4,6 = 9,8,6 LEDs. Left: pins 3,5,7 = 9,8,6 LEDs
@@ -13,12 +13,16 @@ const uint8_t STRIP_LENGTHS[NUM_STRIPS] = {9, 8, 6, 9, 8, 6};
 const uint8_t MAX_LEDS = 9;
 
 const uint8_t BRAKE_PIN = 8;
-const uint8_t LEFT_PIN = 10; // Flipped
-const uint8_t RIGHT_PIN = 9; // Flipped
+const uint8_t LEFT_PIN = 10;
+const uint8_t RIGHT_PIN = 9;
 
 const uint16_t DEFAULT_PERIOD_MS = 800;
 const uint8_t SWEEP_PERCENT = 70;
 const uint8_t TAIL_LENGTH = 4;
+
+// Startup animation settings
+const uint8_t STARTUP_TAIL = 3;
+const uint16_t STARTUP_STEP_MS = 40;
 
 CRGB strips[NUM_STRIPS][9];
 
@@ -36,6 +40,37 @@ struct TurnState {
 
 TurnState leftTurn, rightTurn;
 
+void startupAnimation() {
+  // Sweep inner->outer across all strips simultaneously
+  for (uint8_t step = 0; step < MAX_LEDS + STARTUP_TAIL; step++) {
+    for (uint8_t s = 0; s < NUM_STRIPS; s++) {
+      uint8_t len = STRIP_LENGTHS[s];
+      fill_solid(strips[s], len, CRGB::Black);
+
+      int8_t headIndex = (len - 1) - (step * len / MAX_LEDS);
+
+      for (int8_t i = 0; i < STARTUP_TAIL; i++) {
+        int8_t pos = headIndex + i;
+        if (pos >= 0 && pos < len) {
+          uint8_t brightness = 255 * (STARTUP_TAIL - i) / STARTUP_TAIL;
+          strips[s][pos] = CRGB(brightness, 0, 0);
+        }
+      }
+    }
+    FastLED.show();
+    delay(STARTUP_STEP_MS);
+  }
+
+  // Fade out
+  for (int8_t b = 255; b >= 0; b -= 15) {
+    FastLED.setBrightness(b);
+    FastLED.show();
+    delay(10);
+  }
+  FastLED.setBrightness(BRIGHTNESS);
+  FastLED.clear(true);
+}
+
 void setup() {
   FastLED.addLeds<WS2812B, 2, GRB>(strips[0], STRIP_LENGTHS[0]); // Right outer
   FastLED.addLeds<WS2812B, 4, GRB>(strips[1], STRIP_LENGTHS[1]); // Right mid
@@ -50,6 +85,8 @@ void setup() {
   pinMode(RIGHT_PIN, INPUT);
 
   FastLED.clear(true);
+
+  startupAnimation(); // Run once on boot
 }
 
 void updateTurnTiming(TurnState &state, bool currentRaw, uint32_t now) {
@@ -80,10 +117,6 @@ void updateTurnTiming(TurnState &state, bool currentRaw, uint32_t now) {
 void animateTurn(TurnState &state, bool brakeActive, uint8_t startStrip, uint8_t endStrip, uint32_t now) {
   CRGB fullRed = CRGB(TURN_BRIGHTNESS, 0, 0);
 
-  for (uint8_t s = startStrip; s <= endStrip; s++) {
-    fill_solid(strips[s], STRIP_LENGTHS[s], CRGB::Black);
-  }
-
   if (!state.isActive) {
     if (brakeActive) {
       for (uint8_t s = startStrip; s <= endStrip; s++) {
@@ -101,9 +134,12 @@ void animateTurn(TurnState &state, bool brakeActive, uint8_t startStrip, uint8_t
     }
   }
 
+  for (uint8_t s = startStrip; s <= endStrip; s++) {
+    fill_solid(strips[s], STRIP_LENGTHS[s], CRGB::Black);
+  }
+
   if (state.sweepDone) return;
 
-  // Draw comet: head + fading tail, sweeps INNER->OUTER
   for (uint8_t s = startStrip; s <= endStrip; s++) {
     uint8_t len = STRIP_LENGTHS[s];
     uint8_t scaledHead = (state.headPos * len) / MAX_LEDS;
@@ -127,17 +163,14 @@ uint8_t getRunningCount(uint8_t len) {
 }
 
 void updateRunningLights() {
-  for (uint8_t s = 0; s < NUM_STRIPS; s++) {
-    fill_solid(strips[s], STRIP_LENGTHS[s], CRGB::Black);
-  }
-
   CRGB dimRed = CRGB(RUNNING_BRIGHTNESS, 0, 0);
 
   for (uint8_t s = 0; s < NUM_STRIPS; s++) {
     uint8_t len = STRIP_LENGTHS[s];
     uint8_t runCount = getRunningCount(len);
+    fill_solid(strips[s], len, CRGB::Black);
     for (uint8_t i = 0; i < runCount; i++) {
-      strips[s][i] = dimRed; // Outer end
+      strips[s][i] = dimRed;
     }
   }
 }
@@ -152,10 +185,18 @@ void loop() {
   updateTurnTiming(leftTurn, leftRaw, now);
   updateTurnTiming(rightTurn, rightRaw, now);
 
-  bool anyTurnActive = leftTurn.isActive || rightTurn.isActive;
+  bool hazards = leftTurn.isActive && rightTurn.isActive;
 
-  // Strips 0-2 = RIGHT, 3-5 = LEFT
-  if (brake && leftTurn.isActive &&!rightTurn.isActive) {
+  updateRunningLights();
+
+  CRGB brightRed = CRGB(TURN_BRIGHTNESS, 0, 0);
+
+  if (brake && hazards) {
+    for (uint8_t s = 0; s < NUM_STRIPS; s++) {
+      fill_solid(strips[s], STRIP_LENGTHS[s], brightRed);
+    }
+  }
+  else if (brake && leftTurn.isActive &&!rightTurn.isActive) {
     animateTurn(leftTurn, brake, 3, 5, now);
     animateTurn(rightTurn, brake, 0, 2, now);
   }
@@ -163,28 +204,20 @@ void loop() {
     animateTurn(rightTurn, brake, 0, 2, now);
     animateTurn(leftTurn, brake, 3, 5, now);
   }
-  else if (brake && leftTurn.isActive && rightTurn.isActive) {
-    animateTurn(leftTurn, brake, 3, 5, now);
-    animateTurn(rightTurn, brake, 0, 2, now);
-  }
-  else if (brake &&!anyTurnActive) {
-    CRGB brightRed = CRGB(TURN_BRIGHTNESS, 0, 0);
+  else if (brake &&!leftTurn.isActive &&!rightTurn.isActive) {
     for (uint8_t s = 0; s < NUM_STRIPS; s++) {
       fill_solid(strips[s], STRIP_LENGTHS[s], brightRed);
     }
+  }
+  else if (hazards &&!brake) {
+    animateTurn(leftTurn, brake, 3, 5, now);
+    animateTurn(rightTurn, brake, 0, 2, now);
   }
   else if (leftTurn.isActive &&!rightTurn.isActive) {
     animateTurn(leftTurn, brake, 3, 5, now);
   }
   else if (rightTurn.isActive &&!leftTurn.isActive) {
     animateTurn(rightTurn, brake, 0, 2, now);
-  }
-  else if (leftTurn.isActive && rightTurn.isActive) {
-    animateTurn(leftTurn, brake, 3, 5, now);
-    animateTurn(rightTurn, brake, 0, 2, now);
-  }
-  else {
-    updateRunningLights();
   }
 
   FastLED.show();
